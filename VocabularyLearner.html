@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Vocab Learner</title>
+</head>
+<body>
+<h1>Vocab Learner</h1>
+<p>Select a file containing words to learn:</p>
+  <input type="file" id="csvFileInput">
+  <br><br>
+<fieldset>
+  <legend>Translation Direction</legend>
+  <input type="radio" id="directionE2F" name="translationDirection" value="englishToForeign" checked>
+  <label for="englishToForeign">English to Foreign Language</label><br>
+  <input type="radio" id="directionF2E" name="translationDirection" value="foreignToEnglish">
+  <label for="foreignToEnglish">Foreign Language to English</label>
+</fieldset>
+
+<br>
+  <table id="wordTable"></table>
+
+<br>
+<label><i id="englishWordLabel"></i></label>
+<br>
+<input type="text" id="foreignTranslationInput">
+<button id="checkButton">Check</button>
+  <audio id="audioCorrect" src="Sounds/correct.mp3"></audio>
+  <audio id="audioWrong" src="Sounds/wrong.mp3"></audio>
+
+<br><br>
+<p id="lastWordLine">Last word: </p>
+<p id="userEntryLine">You entered: </p>
+
+  <script>
+//Stub elements which get referenced in main code 
+const fileInput = document.getElementById("csvFileInput");
+const userInput = document.getElementById("foreignTranslationInput");
+const wordTable = document.getElementById("wordTable");
+const englishToForeignButton = document.getElementById("directionE2F");
+const foreignToEnglishButton = document.getElementById("directionF2E");
+
+
+//Global variables needed to hold all the words loaded from file, and the current pair of words being quizzed 
+let quizWordPair = []; 
+let quizWordPairIndex = 0; 
+let wordPairs = [];
+let scoreIncrease = 0.5;
+let scoreDecrease = 0.3;
+let fromLanguage = "English";
+let toLanguage = "Foreign";
+let fromLangTag = "en";
+let toLangTag = "en";
+let  selectedDirection; 
+
+
+
+
+//Listener  for file browse button being clicked 
+fileInput.addEventListener("change", (event) => 
+{
+  const file = event.target.files[0];
+
+  const reader = new FileReader();
+  reader.onload = (event) => 
+  {
+    const csvData = event.target.result;
+    wordPairs = parseCSV(csvData);
+    populateTable();
+  };
+  reader.readAsText(file);
+});
+
+function parseCSV( csvData ) 
+{
+  const rows = csvData.split("\n");
+  const parsedWordPairs = []; // Local variable to store parsed pairs
+var startRow = 0;
+
+  //Get header containing table header and language tags
+  if( rows.length > 0 )
+  {
+    const header = rows[0].split(",");
+    if( header.length === 4 )
+    {
+      fromLanguage  = header[0].trim();
+      toLanguage  = header[1].trim();
+      fromLangTag = header[2].trim();
+      toLangTag = header[3].trim();
+    startRow = 1;
+    }
+  }
+
+  for ( var row = startRow; row < rows.length; row++ ) 
+  {
+    const cells = rows[ row ].split(",");
+    if (cells.length === 2) {
+      parsedWordPairs.push({ english: cells[0].trim(), foreign: cells[1].trim(), weighting: 1, originalRow: 1 });
+    }
+  }
+  return parsedWordPairs;
+}
+
+function populateTable() {
+  wordTable.innerHTML = ""; // Clear the table content
+
+//Create table header 
+createTableHeader();
+
+
+//Now table body
+  var rowCounter = 0;
+  const tableBody = document.createElement("tbody");
+  for (const wordPair of wordPairs) 
+  {
+    const row = document.createElement("tr");
+    row.appendChild(createTableCell(wordPair.english, fromLangTag  ));
+    row.appendChild(createTableCell(wordPair.foreign,toLangTag  ));
+    rowCounter ++;
+    tableBody.appendChild(row);
+  }
+wordTable.appendChild( tableBody );
+
+  // Choose a random word for the quiz and display it
+  displayNewQuizWord();
+}
+
+//A listener for user testing a word they have entered 
+checkButton.addEventListener("click", () => {
+  checkAnswer(); 
+} );
+
+//Event handler for enter key on edit box
+userInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault(); // Prevent default form submission
+    checkButton.click();    // Trigger the button click
+  }
+});
+
+
+function createTableHeader() {
+  const tableHeader = document.createElement( "thead");
+  const headerRow = document.createElement("tr");
+  headerRow.appendChild(createTableHeaderCell( fromLanguage ));
+  headerRow.appendChild(createTableHeaderCell( toLanguage ));
+
+  tableHeader.appendChild( headerRow );
+  wordTable.appendChild( tableHeader );
+}
+
+function createTableHeaderCell(content) {
+  const cell = document.createElement("th");
+  cell.textContent = content;
+  return cell;
+}
+
+
+function createTableCell(content, langCode) {
+  const cell = document.createElement("td");
+  cell.textContent = content;  // Append content first
+  cell.lang = langCode; // Add the lang attribute
+
+  return cell;
+}
+
+
+
+function displayNewQuizWord( ) 
+{
+  //Sort the wordPairs array 
+  wordPairs.sort( ( a, b ) => 
+  {
+    // Compare weighting values for descending order
+    return b.weighting - a.weighting;
+  });
+
+  //Get the total of all the weightings
+  var weightingTotal = 0;
+  for (const wordPair of wordPairs) 
+  {
+  const weighting = wordPair.weighting;
+    weightingTotal +=  weighting;
+  }
+
+  const weightedRand = Math.random() *  weightingTotal;
+
+  //Go through the list again until the sum of weight #s exceeds our random number 
+  weightingTotal = 0;
+  var rowCounter = 0;
+  for (const wordPair of wordPairs) 
+  {
+  const weighting = wordPair.weighting;
+    weightingTotal +=  weighting;
+    if( weightingTotal > weightedRand )
+      break;
+    rowCounter++;
+  }
+  
+  quizWordPairIndex = rowCounter; //Math.floor(Math.random() * wordPairs.length);
+  quizWordPair = wordPairs[ quizWordPairIndex ];
+  updateQuestion();
+}
+
+function checkAnswer() 
+{
+  const selectedDirection = document.querySelector( 'input[ name="translationDirection" ]:checked').value;
+  var targetAnswer;
+  if(  selectedDirection === "englishToForeign" )
+    targetAnswer = quizWordPair.foreign;
+  else
+    targetAnswer = quizWordPair.english;
+
+
+    const userTranslation = foreignTranslationInput.value.trim();
+    const isCorrect = userTranslation === targetAnswer;
+
+  //Update the text for reporting the this go 
+  updateReviewLines( targetAnswer, userTranslation ); 
+
+  if (isCorrect) 
+  {
+    wordPairs[ quizWordPairIndex ].weighting -= scoreDecrease  ;
+    if( wordPairs[ quizWordPairIndex ].weighting < scoreDecrease   ) 
+      wordPairs[ quizWordPairIndex ].weighting = scoreDecrease ;
+    audioCorrect.play();
+  } else {
+    wordPairs[ quizWordPairIndex ].weighting += scoreIncrease ;
+    audioWrong.play();
+  }
+  displayNewQuizWord();
+}
+
+function updateReviewLines( lastWord, userEntry ) 
+{
+  document.getElementById("lastWordLine").textContent = "Last answer: " + lastWord;
+  document.getElementById("userEntryLine").textContent = "You entered: " + userEntry;
+}
+
+
+//Listener for change of translation direction 
+englishToForeignButton.addEventListener("change", () => {
+  updateQuestion();
+});
+foreignToEnglishButton.addEventListener("change", () => {
+  updateQuestion();
+});
+
+
+function updateQuestion()
+{
+  const selectedDirection = document.querySelector( 'input[ name="translationDirection" ]:checked').value;
+
+if( selectedDirection=== "englishToForeign" )
+  {
+    englishWordLabel.lang = fromLangTag;
+    englishWordLabel.textContent = quizWordPair.english;
+  }
+  else
+  {
+    englishWordLabel.lang = toLangTag;
+    englishWordLabel.textContent = quizWordPair.foreign;
+  }
+
+foreignTranslationInput.value = ""; // Clear previous input
+}
+  </script>
+</body>
+</html>
+
+
